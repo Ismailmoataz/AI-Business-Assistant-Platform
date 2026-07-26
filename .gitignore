@@ -216,3 +216,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+*.db
+.codex_eval_deps/
+
+# Node / Next.js
+node_modules/
+.next/
+*.tsbuildinfo
+
+# The Python template's generic `lib/` rule must not hide frontend source.
+!frontend/lib/
+!frontend/lib/**
+
+# Playwright browser-test artifacts
+playwright-report/
+test-results/
+blob-report/

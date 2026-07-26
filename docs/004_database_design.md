@@ -4,7 +4,7 @@
 
 The AI Business Assistant Platform uses a relational database to store structured application data. The database is responsible for managing users, companies, AI agents, uploaded documents, conversations, and messages while maintaining relationships between these entities.
 
-SQLite is used during development for simplicity. The architecture is database-agnostic through SQLAlchemy, allowing future migration to PostgreSQL or another relational database with minimal code changes.
+PostgreSQL is the current application database in every supported environment. SQLAlchemy provides a clear data-access boundary for future database changes, but the runtime configuration intentionally requires PostgreSQL.
 
 The database is designed to support:
 

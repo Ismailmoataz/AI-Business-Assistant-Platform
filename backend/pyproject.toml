@@ -1,0 +1,21 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 180
+
+[tool.ruff.lint]
+select = ["E4", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+explicit_package_bases = true
+follow_imports = "silent"
+ignore_missing_imports = true
+no_implicit_optional = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = ["alembic.*", "tests.*"]
+ignore_errors = true

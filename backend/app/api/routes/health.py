@@ -1,46 +1,68 @@
-import logging
+"""Operational readiness endpoint."""
 
-from fastapi import APIRouter, HTTPException, status
+import logging
+from typing import Literal, cast
+
+from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.config.settings import settings
 from app.database.connection import engine
+from app.observability import set_dependency_health
+from app.schemas import HealthResponse, LivenessResponse
 from app.services.infrastructure import get_minio_client, get_redis_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Health"])
 
 
-@router.get("/health")
-def health() -> dict[str, object]:
+@router.get("/health/live", response_model=LivenessResponse)
+def liveness(response: Response) -> LivenessResponse:
+    """Report process liveness without calling external dependencies."""
+    response.headers["Cache-Control"] = "no-store"
+    return LivenessResponse(status="ok")
+
+
+@router.get("/health/ready", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse)
+def readiness(response: Response) -> HealthResponse:
+    """Report readiness only when required dependencies and the storage bucket respond."""
+    response.headers["Cache-Control"] = "no-store"
     dependencies: dict[str, str] = {}
 
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
         dependencies["database"] = "ok"
+        set_dependency_health("database", True)
     except SQLAlchemyError:
-        logger.exception("Database health check failed")
+        logger.warning("Database health check failed", exc_info=True)
         dependencies["database"] = "unavailable"
+        set_dependency_health("database", False)
 
     try:
         get_redis_client().ping()
         dependencies["redis"] = "ok"
+        set_dependency_health("redis", True)
     except Exception:
-        logger.exception("Redis health check failed")
+        logger.warning("Redis health check failed", exc_info=True)
         dependencies["redis"] = "unavailable"
+        set_dependency_health("redis", False)
 
     try:
-        get_minio_client().list_buckets()
-        dependencies["minio"] = "ok"
+        bucket_ready = get_minio_client().bucket_exists(settings.minio_documents_bucket)
+        dependencies["minio"] = "ok" if bucket_ready else "unavailable"
+        set_dependency_health("minio", bucket_ready)
     except Exception:
-        logger.exception("MinIO health check failed")
+        logger.warning("MinIO health check failed", exc_info=True)
         dependencies["minio"] = "unavailable"
+        set_dependency_health("minio", False)
 
     if any(value != "ok" for value in dependencies.values()):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"status": "unhealthy", "dependencies": dependencies},
-        )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"status": "unhealthy", "dependencies": dependencies})
 
-    return {"status": "ok", "dependencies": dependencies}
+    return HealthResponse(
+        status="ok",
+        dependencies=cast(dict[str, Literal["ok"]], dependencies),
+    )

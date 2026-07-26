@@ -1,0 +1,19 @@
+services:
+  postgres:
+    restart: always
+  redis:
+    restart: always
+  minio:
+    restart: always
+  backend:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required for production}
+    restart: always
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+  migrate:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required for production}
+  frontend:
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required for production}
+    restart: always
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"

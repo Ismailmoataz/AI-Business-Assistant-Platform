@@ -1,0 +1,11 @@
+.env
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.codex_eval_deps
+.phase8-deps
+.venv
+__pycache__
+*.db
+*.py[cod]
+tests

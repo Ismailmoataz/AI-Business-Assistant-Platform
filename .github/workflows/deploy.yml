@@ -1,0 +1,109 @@
+name: Deploy release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub Environment and Compose target
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: Immutable release image tag, for example sha-1a2b3c4
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.environment }}
+    runs-on: [self-hosted, linux, deployment]
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    env:
+      APP_ENV_FILE: ${{ vars.APP_ENV_FILE }}
+      BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
+      COMPOSE_PROJECT_NAME: ai-business-assistant-${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve immutable image references
+        shell: bash
+        run: |
+          repository="${GITHUB_REPOSITORY,,}"
+          echo "BACKEND_IMAGE=ghcr.io/${repository}-backend:${{ inputs.image_tag }}" >> "$GITHUB_ENV"
+          echo "FRONTEND_IMAGE=ghcr.io/${repository}-frontend:${{ inputs.image_tag }}" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          test -n "$APP_ENV_FILE"
+          test -f "$APP_ENV_FILE"
+          test -n "$BACKEND_HEALTH_URL"
+          docker compose \
+            --env-file "$APP_ENV_FILE" \
+            -f docker-compose.yml \
+            -f "docker-compose.${{ inputs.environment }}.yml" \
+            config --quiet
+      - name: Pull release images
+        shell: bash
+        run: |
+          docker compose \
+            --env-file "$APP_ENV_FILE" \
+            -f docker-compose.yml \
+            -f "docker-compose.${{ inputs.environment }}.yml" \
+            pull backend frontend
+      - name: Start dependencies and provision object storage
+        shell: bash
+        run: |
+          docker compose \
+            --env-file "$APP_ENV_FILE" \
+            -f docker-compose.yml \
+            -f "docker-compose.${{ inputs.environment }}.yml" \
+            up -d postgres redis minio
+          docker compose \
+            --env-file "$APP_ENV_FILE" \
+            -f docker-compose.yml \
+            -f "docker-compose.${{ inputs.environment }}.yml" \
+            run --rm minio-init
+      - name: Apply database migrations
+        shell: bash
+        run: |
+          docker compose \
+            --env-file "$APP_ENV_FILE" \
+            -f docker-compose.yml \
+            -f "docker-compose.${{ inputs.environment }}.yml" \
+            run --rm migrate
+      - name: Roll out application
+        shell: bash
+        run: |
+          docker compose \
+            --env-file "$APP_ENV_FILE" \
+            -f docker-compose.yml \
+            -f "docker-compose.${{ inputs.environment }}.yml" \
+            up -d --no-build --remove-orphans backend frontend
+          curl --fail --show-error --silent \
+            --retry 12 --retry-delay 5 --retry-all-errors \
+            "$BACKEND_HEALTH_URL/health/ready"
+      - name: Deployment status
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          docker compose \
+            --env-file "$APP_ENV_FILE" \
+            -f docker-compose.yml \
+            -f "docker-compose.${{ inputs.environment }}.yml" \
+            ps

@@ -1,0 +1,20 @@
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+  redis:
+    ports:
+      - "127.0.0.1:${REDIS_EXPOSED_PORT:-6379}:6379"
+  minio:
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+  pgadmin:
+    ports:
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
+  backend:
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+  frontend:
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
